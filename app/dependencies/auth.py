@@ -14,6 +14,8 @@ def get_current_client(token: str = Depends(oauth2_scheme), db: Session = Depend
     )
 
     try:
+        if token.lower().startswith("bearer "):
+            token = token.split(" ", 1)[1].strip()
         payload = decode_access_token(token)
         client_id = payload.get("sub")
         if client_id is None:

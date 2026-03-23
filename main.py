@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 
 from app import database
+from app.middleware.rate_limiter import RateLimitMiddleware
 from app.models.models import Base
 from app.routers.auth import router as auth_router
 from app.routers.protected import router as protected_router
 
 app = FastAPI()
+app.add_middleware(RateLimitMiddleware)
 
 
 @app.on_event("startup")
