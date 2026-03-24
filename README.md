@@ -1,133 +1,79 @@
-# API Rate Limiter (FastAPI)
 
-Production-oriented FastAPI service focused on API authentication, tier-aware authorization, and resilient request throttling.
 
-## Overview
+<h1>RateShield – Rate Limiter &amp; Gateway</h1>
+<p class="subtitle">Python · FastAPI · Redis · PostgreSQL · SQLAlchemy · Docker · AWS EC2</p>
 
-This project provides a backend foundation for client-authenticated APIs where each request is protected by JWT, validated against stored client records, and rate-limited with Redis-backed sliding windows.
+<p>
+  Production-grade distributed API Gateway with route-aware rate limiting, JWT-based auth, and role-based access control.
+  Three containerized services orchestrated via Docker Compose, deployed on AWS EC2.
+</p>
 
-The service is designed for controlled multi-tenant API access with clear separation of concerns:
-- Authentication and token issuance
-- Authorization and tier enforcement
-- Request-level throttling and abuse protection
-- Database-backed client records
+<div class="badges">
+  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis">
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/SQLAlchemy-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white" alt="AWS EC2">
+  <img src="https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT">
+</div>
 
-## Key Features
+<h2>Overview</h2>
+<ul>
+  <li>Distributed API gateway with 3 containerized services — API, Redis, PostgreSQL — wired via Docker Compose and hosted on AWS EC2.</li>
+  <li>Route-aware sliding window rate limiter using Redis Sorted Sets; returns <code>429 Too Many Requests</code> with <code>Retry-After</code> headers on violation.</li>
+  <li>JWT authentication with OAuth2-style token issuance and RBAC across <code>basic</code>, <code>premium</code>, and <code>admin</code> tiers.</li>
+  <li>Resilient middleware with graceful in-memory fallback on Redis failure — no hard crash, no dropped requests.</li>
+</ul>
 
-### 1) JWT-based Authentication
-- Client registration with hashed secret storage
-- Token issuance through OAuth2 password flow compatible endpoint
-- Signed JWT access tokens with configurable expiry
-- Token decoding and validation in dependency layer
+<h2>Endpoints</h2>
+<ul>
+  <li><code>POST /auth/register</code> — register a client with name, tier, and secret</li>
+  <li><code>POST /auth/token</code> — issue a signed JWT via OAuth2 password flow</li>
+  <li><code>GET /</code> — protected root</li>
+  <li><code>GET /me</code> — returns authenticated client identity and tier</li>
+  <li><code>GET /admin/health</code> — admin-tier-only health check</li>
+</ul>
 
-### 2) Role/Tier-aware Authorization
-- Tier model: basic, premium, admin
-- Reusable dependency to enforce allowed tiers per route
-- Example admin-only protected endpoint implemented
+<h2>Rate Limiting</h2>
+<ul>
+  <li>Algorithm: sliding window using Redis Sorted Sets — precise burst control under high concurrency</li>
+  <li>Per-scope limits: <code>/auth/register</code>, <code>/auth/token</code>, general authenticated routes</li>
+  <li>Response headers: <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Window</code></li>
+  <li>Fallback: in-memory limiter activates automatically when Redis is unreachable</li>
+</ul>
 
-### 3) Sliding-window Rate Limiting (Redis)
-- Middleware-level throttling for incoming requests
-- Redis sorted-set window tracking for precise rolling limits
-- Endpoint-specific scopes and limits:
-	- Register requests
-	- Token requests
-	- General authenticated requests
-- Response headers added for client visibility:
-	- X-RateLimit-Limit
-	- X-RateLimit-Remaining
-	- X-RateLimit-Window
+<h2>Auth &amp; Access Control</h2>
+<ul>
+  <li>Client secrets hashed with <code>pbkdf2_sha256</code> via passlib — never stored in plaintext</li>
+  <li>Signed JWT tokens with configurable expiry via <code>python-jose</code></li>
+  <li>Tier guards as reusable FastAPI dependencies — clean, composable, testable</li>
+  <li>Invalid credentials → <code>401</code>. Insufficient tier → <code>403</code>.</li>
+</ul>
 
-### 4) Resilient Fallback Behavior
-- In-memory fallback limiter when Redis is temporarily unavailable
-- Protected docs/OpenAPI routes excluded from limiter
-- Graceful 429 responses with scope and window metadata
+<h2>Stack</h2>
+<ul>
+  <li><strong>Framework:</strong> FastAPI + Uvicorn (ASGI)</li>
+  <li><strong>Auth:</strong> python-jose (JWT), passlib (hashing)</li>
+  <li><strong>ORM:</strong> SQLAlchemy — PostgreSQL primary, SQLite fallback on init failure</li>
+  <li><strong>Rate limiting:</strong> Redis Sorted Sets, in-memory fallback</li>
+  <li><strong>Validation:</strong> Pydantic</li>
+  <li><strong>Infra:</strong> Docker Compose · AWS EC2</li>
+</ul>
 
-### 5) Database-backed Client Management
-- SQLAlchemy models for clients and supporting entities
-- Startup schema creation
-- Automatic fallback to SQLite if PostgreSQL is unreachable at init
+<h2>Config</h2>
+<p>Environment-driven via <code>.env</code> or Docker Compose:</p>
+<ul>
+  <li><code>JWT_SECRET</code>, <code>JWT_ALGORITHM</code>, <code>TOKEN_EXPIRY</code></li>
+  <li><code>REDIS_URL</code></li>
+  <li><code>DATABASE_URL</code></li>
+  <li>Per-route and per-tier rate limit thresholds</li>
+</ul>
 
-## API Surface (Current)
+<hr>
 
-### Authentication
-- POST /auth/register
-	- Registers a client with name, tier, and secret
-- POST /auth/token
-	- Issues JWT access token for valid credentials
+<p class="note">Core auth, rate limiting, and RBAC are fully implemented. Planned: persistent API request logging, blocked IP enforcement, dynamic route policies, and automated test coverage.</p>
 
-### Protected
-- GET /
-	- Protected root message
-- GET /me
-	- Returns authenticated client identity and tier
-- GET /admin/health
-	- Admin-tier-only health endpoint
-
-## Security Notes
-
-- Client secrets are stored as one-way hashes using passlib
-- JWT signing is centralized and configurable by environment
-- Invalid or missing credentials return standard OAuth-style 401 responses
-- Tier-based access checks return 403 for insufficient privileges
-
-## Configuration
-
-Environment-driven configuration is supported for:
-- JWT secret, algorithm, and token expiry
-- Redis URL
-- Rate-limit window and tier/route thresholds
-- Database URL
-
-Default values are present for local development safety, but production environments should always override sensitive defaults.
-
-## Technologies Involved
-
-- Language: Python 3.10
-- API Framework: FastAPI
-- ASGI Server: Uvicorn
-- Data Validation: Pydantic
-- ORM: SQLAlchemy
-- Database: PostgreSQL (with SQLite fallback)
-- Cache/Rate-limit store: Redis
-- Authentication: OAuth2 Password flow + JWT (`python-jose`)
-- Password Hashing: Passlib (`pbkdf2_sha256`)
-- DB Drivers: `asyncpg`, `psycopg2-binary`
-- Containerization: Docker, Docker Compose
-
-## Project Structure
-
-- main.py
-	- FastAPI app entrypoint, middleware wiring, router inclusion
-- app/core/
-	- Config, Redis client, security utilities
-- app/routers/
-	- Authentication and protected route definitions
-- app/dependencies/
-	- Current-client resolution and tier guards
-- app/middleware/
-	- Rate limiting middleware implementation
-- app/models/
-	- SQLAlchemy ORM models
-- app/schemas.py
-	- Pydantic request/response contracts
-
-## Infrastructure
-
-Containerized stack includes:
-- FastAPI application container
-- Redis for rate-limiting state
-- PostgreSQL for persistent relational data
-
-Docker and Compose files are present for consistent environment provisioning.
-
-## Current Status
-
-The project is actively in development. Core authentication, authorization, and request-throttling capabilities are already implemented and ready for iterative hardening.
-
-## Planned Enhancements
-
-- Persist and expose API request logs from APILog model
-- Activate and enforce blocked IP logic from BlockedIP model
-- Dynamic per-route policy management using Route model
-- Expand observability and operational metrics
-- Add dedicated automated test coverage
+</body>
+</html>
