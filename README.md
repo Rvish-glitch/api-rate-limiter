@@ -1,7 +1,6 @@
 
 
 <h1>RateShield – Rate Limiter &amp; Gateway</h1>
-<p class="subtitle">Python · FastAPI · Redis · PostgreSQL · SQLAlchemy · Docker · AWS EC2</p>
 
 <p>
   Production-grade distributed API Gateway with route-aware rate limiting, JWT-based auth, and role-based access control.
