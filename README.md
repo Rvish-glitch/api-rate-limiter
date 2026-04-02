@@ -4,7 +4,7 @@
 
 <p>
   Production-grade distributed API Gateway with route-aware rate limiting, JWT-based auth, and role-based access control.
-  Three containerized services orchestrated via Docker Compose, deployed on AWS EC2.
+  Three containerized services orchestrated via Docker Compose.
 </p>
 
 <div class="badges">
@@ -14,13 +14,13 @@
   <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
   <img src="https://img.shields.io/badge/SQLAlchemy-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy">
   <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white" alt="AWS EC2">
+  <!-- <img src="https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white" alt="AWS EC2"> -->
   <img src="https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT">
 </div>
 
 <h2>Overview</h2>
 <ul>
-  <li>Distributed API gateway with 3 containerized services — API, Redis, PostgreSQL — wired via Docker Compose and hosted on AWS EC2.</li>
+  <li>Distributed API gateway with 3 containerized services — API, Redis, PostgreSQL — wired via Docker Compose </li>
   <li>Route-aware sliding window rate limiter using Redis Sorted Sets; returns <code>429 Too Many Requests</code> with <code>Retry-After</code> headers on violation.</li>
   <li>JWT authentication with OAuth2-style token issuance and RBAC across <code>basic</code>, <code>premium</code>, and <code>admin</code> tiers.</li>
   <li>Resilient middleware with graceful in-memory fallback on Redis failure — no hard crash, no dropped requests.</li>
@@ -58,7 +58,7 @@
   <li><strong>ORM:</strong> SQLAlchemy — PostgreSQL primary, SQLite fallback on init failure</li>
   <li><strong>Rate limiting:</strong> Redis Sorted Sets, in-memory fallback</li>
   <li><strong>Validation:</strong> Pydantic</li>
-  <li><strong>Infra:</strong> Docker Compose · AWS EC2</li>
+  <!-- <li><strong>Infra:</strong> Docker Compose · AWS EC2</li> -->
 </ul>
 
 <h2>Config</h2>
