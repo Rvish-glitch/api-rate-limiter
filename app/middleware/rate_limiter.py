@@ -1,124 +1,100 @@
-import time
-import uuid
-from threading import Lock
-
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from redis import Redis
-from redis.exceptions import RedisError
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.core.config import RATE_LIMIT_WINDOW_SECONDS
-from app.core.redis_client import get_redis_client
-from app.core.security import JWTError, decode_access_token
+from app.core.config import settings
+from app.services.rate_limit_service import RateLimitService
+from app.utils.datetime_utils import current_time_ms
+from app.utils.network import get_client_ip
+from app.utils.security import JWTError, decode_access_token
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, redis_client: Redis | None = None):
+    def __init__(self, app, rate_limit_service: RateLimitService | None = None):
         super().__init__(app)
-        self.redis = redis_client or get_redis_client()
-        self.window_seconds = RATE_LIMIT_WINDOW_SECONDS
-        self.window_ms = self.window_seconds * 1000
-        self._fallback_lock = Lock()
-        self._fallback_events: dict[str, list[int]] = {}
-        self.register_limit = 2
-        self.token_limit = 3
-        self.request_limit = 5
+        self.rate_limit_service = rate_limit_service or RateLimitService()
+        self.window_seconds = settings.RATE_LIMIT_WINDOW_SECONDS
+        self.register_limit = 5
+        self.token_limit = 10
+        self.default_request_limit = 60
         self.skipped_prefixes = (
             "/docs",
             "/openapi.json",
             "/redoc",
+            "/api/v1/system/health",
         )
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path.startswith(self.skipped_prefixes):
             return await call_next(request)
 
-        client_ip = self._get_client_ip(request)
-        if request.url.path == "/auth/register":
+        client_ip = get_client_ip(request)
+        path = request.url.path
+
+        if path in ("/api/v1/auth/register", "/auth/register"):
             key_suffix = f"register:{client_ip}"
             max_requests = self.register_limit
-            scope = "register"
-        elif request.url.path == "/auth/token":
-            key_suffix = f"token:{client_ip}"
+        elif path in ("/api/v1/auth/tokens", "/auth/token"):
+            key_suffix = f"tokens:{client_ip}"
             max_requests = self.token_limit
-            scope = "token"
         else:
-            username = self._extract_username_from_request(request)
-            key_suffix = f"request:{client_ip}:{username}"
-            max_requests = self.request_limit
-            scope = "request"
+            client_id, tier = self._extract_client_info_from_token(request)
+            tier_limit = settings.rate_limits_by_tier.get(tier, self.default_request_limit)
+            key_suffix = f"request:{client_ip}:{client_id}"
+            max_requests = tier_limit
 
-        try:
-            allowed, current_count = self._check_and_increment_by_key(key_suffix, max_requests)
-        except RedisError:
-            allowed, current_count = self._fallback_check_and_increment_by_key(key_suffix, max_requests)
+        allowed, current_count, retry_after = self.rate_limit_service.check_and_increment(
+            key_suffix=key_suffix,
+            max_requests=max_requests,
+            window_seconds=self.window_seconds,
+        )
+
+        now_epoch = int(current_time_ms() / 1000)
+        reset_epoch = now_epoch + (retry_after if not allowed else self.window_seconds)
 
         if not allowed:
+            headers = {
+                "X-RateLimit-Limit": str(max_requests),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_epoch),
+                "Retry-After": str(retry_after),
+            }
             return JSONResponse(
                 status_code=429,
+                headers=headers,
                 content={
-                    "detail": "Too Many Requests",
-                    "scope": scope,
-                    "limit": max_requests,
-                    "window_seconds": self.window_seconds,
+                    "error": {
+                        "code": "RATE_LIMIT_EXCEEDED",
+                        "message": "Too many requests. Please wait before retrying.",
+                        "details": {
+                            "limit": max_requests,
+                            "window_seconds": self.window_seconds,
+                            "retry_after_seconds": retry_after,
+                        },
+                    }
                 },
             )
 
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(max_requests)
         response.headers["X-RateLimit-Remaining"] = str(max(0, max_requests - current_count))
-        response.headers["X-RateLimit-Window"] = str(self.window_seconds)
+        response.headers["X-RateLimit-Reset"] = str(reset_epoch)
         return response
 
-    def _check_and_increment_by_key(self, key_suffix: str, max_requests: int) -> tuple[bool, int]:
-        key = f"rate_limit:{key_suffix}"
-        now_ms = int(time.time() * 1000)
-        window_start = now_ms - self.window_ms
-
-        pipeline = self.redis.pipeline(transaction=True)
-        pipeline.zremrangebyscore(key, 0, window_start)
-        pipeline.zcard(key)
-        _, current_count = pipeline.execute()
-
-        if current_count >= max_requests:
-            return False, int(current_count)
-
-        member = f"{now_ms}-{uuid.uuid4()}"
-        pipeline = self.redis.pipeline(transaction=True)
-        pipeline.zadd(key, {member: now_ms})
-        pipeline.expire(key, self.window_seconds + 1)
-        pipeline.execute()
-        return True, int(current_count) + 1
-
-    def _fallback_check_and_increment_by_key(self, key_suffix: str, max_requests: int) -> tuple[bool, int]:
-        now_ms = int(time.time() * 1000)
-        window_start = now_ms - self.window_ms
-        with self._fallback_lock:
-            events = self._fallback_events.get(key_suffix, [])
-            events = [event for event in events if event > window_start]
-            if len(events) >= max_requests:
-                self._fallback_events[key_suffix] = events
-                return False, len(events)
-            events.append(now_ms)
-            self._fallback_events[key_suffix] = events
-            return True, len(events)
-
-    def _extract_username_from_request(self, request: Request) -> str:
+    def _extract_client_info_from_token(self, request: Request) -> tuple[str, str]:
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            return "anonymous"
+            return ("anonymous", "basic")
+
         token = auth_header.split(" ", 1)[1].strip()
         try:
-            payload = decode_access_token(token)
-            return str(payload.get("name") or payload.get("sub") or "anonymous")
-        except (JWTError, TypeError, ValueError):
-            return "anonymous"
-
-    def _get_client_ip(self, request: Request) -> str:
-        x_forwarded_for = request.headers.get("x-forwarded-for")
-        if x_forwarded_for:
-            return x_forwarded_for.split(",")[0].strip()
-        if request.client and request.client.host:
-            return request.client.host
-        return "unknown"
+            payload = decode_access_token(
+                token,
+                secret_key=settings.JWT_SECRET_KEY,
+                algorithm=settings.JWT_ALGORITHM,
+            )
+            client_id = str(payload.get("sub") or payload.get("name") or "anonymous")
+            tier = str(payload.get("tier") or "basic").lower()
+            return (client_id, tier)
+        except (JWTError, Exception):
+            return ("anonymous", "basic")

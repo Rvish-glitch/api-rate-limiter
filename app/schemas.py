@@ -1,24 +1,23 @@
-from typing import Literal
+# Legacy re-export for backwards compatibility; prefer importing from app.schemas
+from app.schemas.auth import TokenPayload, TokenResponse
+from app.schemas.client import ClientProfileResponse, ClientRegisterRequest, ClientResponse, Tier
+from app.schemas.common import ErrorDetail, ErrorResponse, HealthResponse, MetricsResponse
+from app.schemas.rate_limit import RateLimitPoliciesResponse, RateLimitStatusResponse
+from app.schemas.route import RouteCreateRequest, RouteResponse
 
-from pydantic import BaseModel, ConfigDict
-
-Tier = Literal["basic", "premium", "admin"]
-
-
-class ClientRegisterRequest(BaseModel):
-    name: str
-    tier: Tier
-    secret: str
-
-
-class ClientResponse(BaseModel):
-    id: int
-    name: str
-    tier: Tier
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+__all__ = [
+    "Tier",
+    "ClientRegisterRequest",
+    "ClientResponse",
+    "ClientProfileResponse",
+    "TokenResponse",
+    "TokenPayload",
+    "ErrorDetail",
+    "ErrorResponse",
+    "HealthResponse",
+    "MetricsResponse",
+    "RateLimitStatusResponse",
+    "RateLimitPoliciesResponse",
+    "RouteCreateRequest",
+    "RouteResponse",
+]

@@ -1,78 +1,71 @@
+# RateShield – High-Performance Distributed API Gateway
 
+RateShield is a production-grade distributed API Gateway featuring route-aware sliding window rate limiting (Redis Sorted Sets with in-memory fallback), JWT authentication with OAuth2 password flows, and tier-based Role-Based Access Control (RBAC).
 
-<h1>RateShield – Rate Limiter &amp; Gateway</h1>
+Orchestrated with Docker Compose and managed using [**`uv`**](https://docs.astral.sh/uv/).
 
-<p>
-  Production-grade distributed API Gateway with route-aware rate limiting, JWT-based auth, and role-based access control.
-  Three containerized services orchestrated via Docker Compose.
-</p>
+---
 
-<div class="badges">
-  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis">
-  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/SQLAlchemy-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy">
-  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
-  <!-- <img src="https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white" alt="AWS EC2"> -->
-  <img src="https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT">
-</div>
+## 🏗️ Layered Architecture
 
-<h2>Overview</h2>
-<ul>
-  <li>Distributed API gateway with 3 containerized services — API, Redis, PostgreSQL — wired via Docker Compose </li>
-  <li>Route-aware sliding window rate limiter using Redis Sorted Sets; returns <code>429 Too Many Requests</code> with <code>Retry-After</code> headers on violation.</li>
-  <li>JWT authentication with OAuth2-style token issuance and RBAC across <code>basic</code>, <code>premium</code>, and <code>admin</code> tiers.</li>
-  <li>Resilient middleware with graceful in-memory fallback on Redis failure — no hard crash, no dropped requests.</li>
-</ul>
+RateShield adheres to a strict, modular layered architecture:
 
-<h2>Endpoints</h2>
-<ul>
-  <li><code>POST /auth/register</code> — register a client with name, tier, and secret</li>
-  <li><code>POST /auth/token</code> — issue a signed JWT via OAuth2 password flow</li>
-  <li><code>GET /</code> — protected root</li>
-  <li><code>GET /me</code> — returns authenticated client identity and tier</li>
-  <li><code>GET /admin/health</code> — admin-tier-only health check</li>
-</ul>
+- **`app/api/v1/`**: Versioned API routers parsing schemas, invoking services, and setting HTTP responses.
+- **`app/schemas/`**: Pydantic v2 DTOs enforcing request validation and serialization.
+- **`app/models/`**: SQLAlchemy 2.0 ORM models (`Client`, `Route`, `APILog`, `BlockedIP`).
+- **`app/services/`**: Isolated business domain logic, transactions, and Redis cache coordination.
+- **`app/utils/`**: Stateless cryptographic, network (client IP resolution), and window math helpers.
+- **`app/core/`**: Infrastructure configurations, database engine, and Redis client.
+- **`app/dependencies/`**: FastAPI dependency injection providers (`get_db`, `get_current_client`, `require_tier`, service providers).
+- **`app/middleware/`**: Sliding-window rate limiter middleware with graceful in-memory fallback.
 
-<h2>Rate Limiting</h2>
-<ul>
-  <li>Algorithm: sliding window using Redis Sorted Sets — precise burst control under high concurrency</li>
-  <li>Per-scope limits: <code>/auth/register</code>, <code>/auth/token</code>, general authenticated routes</li>
-  <li>Response headers: <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Window</code></li>
-  <li>Fallback: in-memory limiter activates automatically when Redis is unreachable</li>
-</ul>
+---
 
-<h2>Auth &amp; Access Control</h2>
-<ul>
-  <li>Client secrets hashed with <code>pbkdf2_sha256</code> via passlib — never stored in plaintext</li>
-  <li>Signed JWT tokens with configurable expiry via <code>python-jose</code></li>
-  <li>Tier guards as reusable FastAPI dependencies — clean, composable, testable</li>
-  <li>Invalid credentials → <code>401</code>. Insufficient tier → <code>403</code>.</li>
-</ul>
+## 📦 Package Management with `uv`
 
-<h2>Stack</h2>
-<ul>
-  <li><strong>Framework:</strong> FastAPI + Uvicorn (ASGI)</li>
-  <li><strong>Auth:</strong> python-jose (JWT), passlib (hashing)</li>
-  <li><strong>ORM:</strong> SQLAlchemy — PostgreSQL primary, SQLite fallback on init failure</li>
-  <li><strong>Rate limiting:</strong> Redis Sorted Sets, in-memory fallback</li>
-  <li><strong>Validation:</strong> Pydantic</li>
-  <!-- <li><strong>Infra:</strong> Docker Compose · AWS EC2</li> -->
-</ul>
+All dependency management and script execution uses `uv`:
 
-<h2>Config</h2>
-<p>Environment-driven via <code>.env</code> or Docker Compose:</p>
-<ul>
-  <li><code>JWT_SECRET</code>, <code>JWT_ALGORITHM</code>, <code>TOKEN_EXPIRY</code></li>
-  <li><code>REDIS_URL</code></li>
-  <li><code>DATABASE_URL</code></li>
-  <li>Per-route and per-tier rate limit thresholds</li>
-</ul>
+```bash
+# Sync virtual environment from uv.lock
+uv sync
 
-<hr>
+# Run the API gateway locally with hot reload
+uv run uvicorn app.main:app --reload
 
-<p class="note">Core auth, rate limiting, and RBAC are fully implemented. Planned: persistent API request logging, blocked IP enforcement, dynamic route policies, and automated test coverage.</p>
+# Execute automated test suite
+uv run pytest
+```
 
-</body>
-</html>
+---
+
+## 🚀 API Endpoints (`/api/v1`)
+
+| Method | Endpoint | Description | Access Tier | Status Code |
+| :--- | :--- | :--- | :---: | :---: |
+| `POST` | `/api/v1/auth/register` | Register client identity and tier | Public | `201 Created` |
+| `POST` | `/api/v1/auth/tokens` | Issue OAuth2 Bearer access token | Public | `200 OK` |
+| `GET` | `/api/v1/clients/me` | Current authenticated client profile | Basic / Premium / Admin | `200 OK` |
+| `GET` | `/api/v1/clients` | List registered clients (paginated) | Admin | `200 OK` |
+| `GET` | `/api/v1/clients/{client_id}` | Fetch client details by ID | Admin | `200 OK` |
+| `GET` | `/api/v1/rate-limits/status` | Inspect remaining request quota | Basic / Premium / Admin | `200 OK` |
+| `GET` | `/api/v1/rate-limits/policies` | Active tier rate limits | Admin | `200 OK` |
+| `GET` | `/api/v1/routes` | List active upstream gateway routes | Admin | `200 OK` |
+| `POST` | `/api/v1/routes` | Register new upstream proxy route | Admin | `201 Created` |
+| `DELETE` | `/api/v1/routes/{route_id}` | Deactivate/remove upstream route | Admin | `204 No Content` |
+| `GET` | `/api/v1/blocked-ips` | List blocked IP addresses | Admin | `200 OK` |
+| `POST` | `/api/v1/blocked-ips` | Block an IP with reason | Admin | `201 Created` |
+| `DELETE` | `/api/v1/blocked-ips/{ip}` | Unblock an IP address | Admin | `204 No Content` |
+| `GET` | `/api/v1/system/health` | Gateway health check (DB + Redis) | Public | `200 OK` |
+| `GET` | `/api/v1/system/metrics` | Gateway throughput & inventory counters | Admin | `200 OK` |
+
+---
+
+## ⚡ Rate Limiting Standards
+
+- **Algorithm**: Sliding window using Redis Sorted Sets with epoch millisecond scoring.
+- **Failover**: Automatic in-memory sliding window fallback if Redis is temporarily unreachable.
+- **Standard Headers**:
+  - `X-RateLimit-Limit`: Maximum requests permitted within the window.
+  - `X-RateLimit-Remaining`: Remaining requests in current window.
+  - `X-RateLimit-Reset`: Unix epoch timestamp when current window resets.
+  - `Retry-After`: Seconds to wait on HTTP 429.

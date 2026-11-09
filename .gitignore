@@ -1,0 +1,53 @@
+# Agent documentation & internal guidelines
+agents.md
+AGENTS.md
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database & local data
+*.db
+*.sqlite
+*.sqlite3
+app.db
+
+# Environment variables & secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Linters & formatters
+.ruff_cache/
+.mypy_cache/
+
+# IDE & editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
